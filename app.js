@@ -51,8 +51,43 @@ function llamar(accion, datos) {
     }, function (e) { if (/Failed to fetch|NetworkError|Load failed/i.test(e.message)) throw new Error('No hay conexión con el servidor. Compruebe la conexión y vuelva a intentarlo.'); throw e; });
 }
 
-// Modo de prueba: una congregación inventada; nada sale del navegador.
-var DEMO_DB = { envios: [], avisos: [{ id: 'm1', tipo: 'msg', titulo: 'Bienvenidos a Tesorería IPUE', texto: 'Esta es la versión de prueba: puede declarar ingresos y ver cómo funciona. Nada se envía de verdad.', de: 'Recaudación General' }] };
+// Modo de prueba: una congregación inventada con año y medio de envíos de ejemplo; nada sale del navegador.
+var DEMO_DB = { avisos: [
+  { id: 'm0', tipo: 'msg', prioridad: 'Importante', confirmar: true, titulo: 'Cierre de mes', texto: 'Recuerde declarar cada ingreso como tarde 24 horas después de hacerlo, y siempre dentro del mismo mes.', de: 'Recaudación General' },
+  { id: 'm1', tipo: 'msg', prioridad: 'Normal', titulo: 'Bienvenidos a Tesorería IPUE', texto: 'Esta es la versión de prueba: puede declarar ingresos y ver cómo funciona. Nada se envía de verdad.', de: 'Recaudación General' }] };
+var DEMO_HIST = null;
+function isoLocal(d) { var p = function (n) { return ('0' + n).slice(-2); }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+function demoHistorial() {
+  if (DEMO_HIST) return DEMO_HIST;
+  var seed = 20261126, R = function () { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  var am = function (a, b, st) { st = st || 1; return Math.round((a + R() * (b - a)) / st) * st; };
+  var hoy = new Date(), out = [], n = {};
+  var mk = function (f, metodo, tipo, L) {
+    var tot = r2(L.reduce(function (s, l) { return s + l[2]; }, 0)), k = f.getFullYear() + '-' + f.getMonth();
+    n[k] = (n[k] || 0) + 1;
+    var dias = (hoy - f) / 864e5;
+    var e = { id: 'I999-' + String(f.getFullYear()).slice(2) + ('0' + (f.getMonth() + 1)).slice(-2) + '-' + ('00' + n[k]).slice(-3), fecha: isoLocal(f), recibido: isoLocal(new Date(+f + 36e5)), metodo: metodo, tipo: tipo, total: tot, justificante: tot,
+      estado: dias > 6 ? 'Conciliado' : 'Recibido', fuera: R() < .05, mixto: false, datafono: metodo === 'TPV' ? 'TPV000000001' : '', banco: metodo === 'Cajero' ? (R() < .8 ? 'BBVA' : 'Santander') : '', lineas: L, incidencia: null };
+    if (R() < .035) { e.justificante = r2(tot + am(1, 20)); e.estado = dias > 12 ? 'Conciliado' : 'Incidencia'; e.incidencia = { tipo: 'Importe', estado: dias > 12 ? 'Resuelta' : 'Notificada', respuesta: dias > 12 ? 'Faltó anotar una ofrenda; corregido.' : '' }; }
+    out.push(e);
+  };
+  for (var d = new Date(hoy.getFullYear() - 1, 0, 1); d <= hoy; d.setDate(d.getDate() + 1)) {
+    var f = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 13, 30), dia = f.getDate(), w = f.getDay(), L;
+    if (f > hoy) break;
+    if (w === 0) { L = [['AC', C.AC, am(40, 260, .5)]]; if (R() < .35) L.push(['DI', C.DI, am(30, 300, .5)]); if (R() < .3) L.push(['OM', C.OM, am(10, 60, 5)]); mk(f, 'TPV', 'TPV', L); }
+    if (dia === 3 || (dia === 17 && R() < .5)) {
+      L = [['OM', C.OM, am(40, 160, 5)], ['SU', C.SU, am(30, 120, .5)], ['VC', C.VC, am(5, 30, 5)]];
+      if (R() < .6) L.push(['EV', C.EV, am(5, 20, 5)]); if (R() < .6) L.push(['GC', C.GC, am(5, 20, 5)]); if (R() < .5) L.push(['SM', C.SM, am(10, 40, 5)]);
+      if (R() < .4) L.push(['SV', C.SV, 14.5]); if (R() < .4) L.push(['RC', C.RC, am(40, 90)]); if (R() < .3) L.push(['PDM', C.PDM, am(10, 40, 5)]);
+      mk(f, 'Cajero', 'Ofrendas generales', L);
+    }
+    if (dia === 5) mk(f, 'Cajero', 'Diezmos', [['DI', C.DI, am(280, 900, .1)]]);
+    if (dia === 1) mk(f, 'Cajero', 'Alquiler', [['AL', C.AL, 650]]);
+    if (dia === 12 && R() < .55) mk(f, 'Bizum', 'Bizum', [['OM', C.OM, am(20, 90, 5)], ['AC', C.AC, am(10, 60, 5)]]);
+  }
+  DEMO_HIST = out.sort(function (a, b) { return a.fecha < b.fecha ? 1 : -1; });
+  return DEMO_HIST;
+}
 function demo(accion, d) {
   return new Promise(function (res, rej) {
     setTimeout(function () {
@@ -61,19 +96,24 @@ function demo(accion, d) {
         if (!/^[a-z]+\.[a-z]+$/.test(String(d.usuario || ''))) return rej(new Error('Usuario o contraseña incorrectos.'));
         return res({ token: 'demo', nombre: 'Pastor de Prueba', congregaciones: [{ cod: 'I999', nombre: 'Congregación de Prueba', dist: 1, lic: 'MC999', rol: 'Pastor', tpv: ['TPV000000001'] }] });
       }
-      if (accion === 'inicio') return res({ avisos: DEMO_DB.avisos, envios: DEMO_DB.envios });
+      if (accion === 'inicio') return res({ avisos: DEMO_DB.avisos, envios: demoHistorial().slice(0, 20) });
+      if (accion === 'misEnvios') return res({ envios: demoHistorial() });
       if (accion === 'leido') { DEMO_DB.avisos = DEMO_DB.avisos.filter(function (a) { return a.id !== d.id; }); return res({ ok: true }); }
       if (accion === 'subirJustificante') return res({ id: 'demo' + Math.random().toString(36).slice(2) });
       if (accion === 'leerJustificante') return res({ disponible: false });
       if (accion === 'declarar') {
-        var tot = r2(totalDesglose(S.d)), id = 'I999-' + new Date().toISOString().slice(2, 4) + ('0' + (new Date().getMonth() + 1)).slice(-2) + '-' + ('00' + (DEMO_DB.envios.length + 1)).slice(-3);
+        var H = demoHistorial(), f = new Date(d.fecha), k = f.getFullYear() + '-' + f.getMonth();
+        var nmes = H.filter(function (e) { return e.fecha.slice(0, 7) === d.fecha.slice(0, 7); }).length + 1;
+        var tot = r2(totalDesglose(S.d)), id = 'I999-' + String(f.getFullYear()).slice(2) + ('0' + (f.getMonth() + 1)).slice(-2) + '-' + ('00' + nmes).slice(-3);
         var ch = comprobar(S.d), inc = ch.some(function (c) { return c.k === 'no'; }), fuera = ch.some(function (c) { return c.fuera; });
-        var r = { id: id, estado: inc ? 'Incidencia' : fuera ? 'Fuera de plazo' : 'Recibido', incidencia: inc, fuera: fuera, congregacion: 'Congregación de Prueba', cod: 'I999', distrito: 1, metodo: d.tipo === 'tpv' ? 'TPV' : d.tipo === 'biz' ? 'Bizum' : 'Cajero', tipo: TIPOS[d.tipo].n, fecha: d.fecha, total: tot, lineas: lineasDe(S.d) };
-        DEMO_DB.envios.unshift({ id: id, fecha: d.fecha, metodo: r.metodo, tipo: r.tipo, total: tot, estado: r.estado === 'Fuera de plazo' ? 'Recibido' : r.estado, fuera: fuera });
+        var met = d.tipo === 'tpv' ? 'TPV' : d.tipo === 'biz' ? 'Bizum' : 'Cajero';
+        var r = { id: id, estado: inc ? 'Incidencia' : fuera ? 'Fuera de plazo' : 'Recibido', incidencia: inc, fuera: fuera, congregacion: 'Congregación de Prueba', cod: 'I999', distrito: 1, metodo: met, tipo: TIPOS[d.tipo].n, fecha: d.fecha, total: tot, lineas: lineasDe(S.d) };
+        H.unshift({ id: id, fecha: d.fecha, recibido: isoLocal(new Date()), metodo: met, tipo: TIPOS[d.tipo].n, total: tot, justificante: num(d.importeJustificante), estado: inc ? 'Incidencia' : 'Recibido', fuera: fuera, mixto: !!d.mixto, datafono: d.tpv || '', banco: met === 'Cajero' ? d.banco : '', lineas: lineasCod(S.d), incidencia: inc ? { tipo: 'Importe', estado: 'Abierta', respuesta: '' } : null });
+        H.sort(function (a, b) { return a.fecha < b.fecha ? 1 : -1; });
         return res(r);
       }
       rej(new Error('Acción desconocida'));
-    }, accion === 'login' ? 500 : 300);
+    }, accion === 'login' ? 500 : 250);
   });
 }
 
@@ -82,11 +122,11 @@ var U = recuperar('u'), S = { v: U ? (U.c ? 'inicio' : 'elegir') : 'login' };
 var VIEWS = {};
 function render() {
   $('#salir').hidden = !U || !U.c;
-  $('#sub').textContent = U && U.c ? U.c.nombre + ' · ' + U.c.cod + ' · Distrito ' + U.c.dist : 'tesoreria.ipue.app';
+  $('#sub').textContent = U && U.c ? U.c.nombre + ' · ' + U.c.cod : 'tesoreria.ipue.app';
   (VIEWS[S.v] || VIEWS.login)();
   window.scrollTo(0, 0);
 }
-function salir(msg) { U = null; guardar('u', null); S = { v: 'login', msg: msg || '' }; render(); }
+function salir(msg) { U = null; HIST = null; guardar('u', null); S = { v: 'login', msg: msg || '' }; render(); }
 function cod() { return U.c.cod; }
 function codl() { return U.c.cod.toLowerCase(); }
 function conceptoEsperado(t) { return t === 'gen' ? 'Donativos ' + codl() : t === 'sum' ? 'Donativo SU' + codl() : t === 'alq' ? 'Donativo A' + codl() : t === 'die' ? 'Donativos ' + (U.c.lic || '') : ''; }
@@ -113,30 +153,226 @@ VIEWS.elegir = function () {
   $$('[data-i]').forEach(function (b) { b.onclick = function () { U.c = U.cs[+b.dataset.i]; guardar('u', U); S = { v: 'inicio' }; render(); }; });
 };
 
+// ── Historial («Mis envíos») ────────────────────────────────────
+var HIST = null;
+var MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+var MES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+function fISO(s) { var m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/); return m ? new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 12), +(m[5] || 0)) : new Date(0); }
+function mk(e) { return e.metodo === 'TPV' ? 'tpv' : e.metodo === 'Bizum' ? 'biz' : 'ef'; }
+function eur0(n) { return Math.round(+n || 0).toLocaleString('es-ES') + ' €'; }
+function cap(t) { return t.charAt(0).toUpperCase() + t.slice(1); }
+function estadoDe(e) { var s = e.estado === 'Exportado' ? 'Conciliado' : e.estado; return { t: s === 'Recibido' ? 'En revisión' : s, c: s === 'Conciliado' ? 'p-ok' : s === 'Incidencia' ? 'p-in' : 'p-re' }; }
+function suma(L) { return r2(L.reduce(function (s, e) { return s + (+e.total || 0); }, 0)); }
+function cargarHistorial(forzar) {
+  if (!forzar && HIST && HIST.cod === cod()) return Promise.resolve(HIST);
+  return llamar('misEnvios', { token: U.token, cod: cod() }).then(function (r) { HIST = { cod: cod(), envios: r.envios || [], completo: true }; return HIST; });
+}
+var MET = { ef: 'Cajero', tpv: 'TPV', biz: 'Bizum' };
+var MI = { ef: '€', tpv: 'TPV', biz: 'Bz' };
+function filaEnvio(e) {
+  var st = estadoDe(e), m = mk(e), f = fISO(e.fecha);
+  return '<button class="envio" data-env="' + esc(e.id) + '"><span class="mi ' + m + '" aria-hidden="true">' + MI[m] + '</span><span class="tx"><b>' + esc(m === 'ef' ? e.tipo : MET[m]) + '</b><small>' + f.getDate() + ' ' + MES3[f.getMonth()] + ' · ' + esc(e.id) + '</small></span>' +
+    '<span class="im"><b>' + eur(e.total) + '</b><span class="pill ' + st.c + '">' + esc(st.t) + '</span>' + (e.fuera ? ' <span class="pill p-fp">Fuera de plazo</span>' : '') + '</span></button>';
+}
+function hojaEnvio(e) {
+  var st = estadoDe(e), m = mk(e), f = fISO(e.fecha), dif = e.justificante ? r2(e.justificante - e.total) : 0;
+  var v = document.createElement('div'); v.className = 'velo';
+  v.innerHTML = '<div class="hoja" role="dialog" aria-modal="true" aria-label="Envío ' + esc(e.id) + '"><div class="asa"></div>' +
+    '<div class="shead"><div><p class="nota" style="margin:0">' + esc(e.id) + '</p><h2 style="font-size:21px">' + esc(m === 'ef' ? 'Cajero · ' + e.tipo : MET[m]) + '</h2></div><button class="btn sm" data-x>Cerrar</button></div>' +
+    '<p style="margin:4px 0 12px"><span class="pill ' + st.c + '">' + esc(st.t) + '</span>' + (e.fuera ? ' <span class="pill p-fp">Fuera de plazo</span>' : '') + (e.mixto ? ' <span class="pill p-in">Ingreso mixto</span>' : '') + '</p>' +
+    '<div class="recibo"><h3>Ingreso del ' + f.getDate() + ' de ' + MESES[f.getMonth()] + ' de ' + f.getFullYear() + (e.fecha.length > 11 ? ' · ' + e.fecha.slice(11, 16) : '') + '</h3>' +
+    (e.lineas && e.lineas.length ? e.lineas.map(function (l) { return '<div class="rl"><span>' + esc(l[1] || C[l[0]] || l[0]) + '</span><span>' + eur(l[2]) + '</span></div>'; }).join('') : '<p class="nota">El detalle del desglose estará disponible cuando se actualice el servicio.</p>') +
+    '<div class="rl tot"><span>Total declarado</span><span>' + eur(e.total) + '</span></div>' +
+    (e.justificante ? '<div class="rl"><span class="nota">Importe del justificante</span><span class="nota">' + eur(e.justificante) + (dif ? ' (' + (dif > 0 ? '+' : '−') + eur(Math.abs(dif)) + ')' : ' ✓') + '</span></div>' : '') + '</div>' +
+    '<div style="display:grid;gap:4px;margin-top:18px" class="nota">' + (e.datafono ? '<span>Datáfono: ' + esc(e.datafono) + '</span>' : '') + (e.banco ? '<span>Banco: ' + esc(e.banco) + '</span>' : '') + (e.recibido ? '<span>Declarado: ' + fechaTxt(e.recibido) + ' ' + esc(e.recibido.slice(11, 16)) + (e.usuario ? ' · ' + esc(e.usuario) : '') + '</span>' : '') + '</div>' +
+    (e.incidencia ? '<div class="aviso inc" style="margin-top:14px;box-shadow:none"><p class="et">Incidencia · ' + esc(e.incidencia.estado) + '</p><p style="margin:0">' + esc(e.incidencia.tipo) + (e.incidencia.respuesta ? '<br><span class="nota">Respuesta: ' + esc(e.incidencia.respuesta) + '</span>' : '') + '</p></div>' : '') +
+    '<button class="btn full" style="margin-top:16px" data-cp>Copiar resumen</button></div>';
+  document.body.appendChild(v);
+  var cerrar = function () { v.remove(); document.removeEventListener('keydown', k); }, k = function (ev) { if (ev.key === 'Escape') cerrar(); };
+  document.addEventListener('keydown', k);
+  v.onclick = function (ev) { if (ev.target === v) cerrar(); };
+  v.querySelector('[data-x]').onclick = cerrar; v.querySelector('[data-x]').focus();
+  v.querySelector('[data-cp]').onclick = function () {
+    copiar(U.c.nombre + ' (' + U.c.cod + ') · envío ' + e.id + '\n' + (m === 'ef' ? 'Cajero · ' + e.tipo : MET[m]) + ' · ' + fechaTxt(e.fecha) + '\n' +
+      (e.lineas || []).map(function (l) { return (l[1] || C[l[0]] || l[0]) + ': ' + eur(l[2]); }).join('\n') + '\nTotal: ' + eur(e.total) + ' · ' + st.t);
+  };
+}
+function conectarFilas(L) { $$('[data-env]').forEach(function (b) { b.onclick = function () { var e = L.filter(function (x) { return x.id === b.dataset.env; })[0]; if (e) hojaEnvio(e); }; }); }
+
 VIEWS.inicio = function () {
   $('#app').innerHTML = '<p class="nota">Cargando…</p>';
-  llamar('inicio', { token: U.token, cod: cod() }).then(function (r) {
-    var estilo = function (e) { return e.estado === 'Conciliado' || e.estado === 'Exportado' ? 'p-ok' : e.estado === 'Incidencia' ? 'p-in' : 'p-re'; };
-    $('#app').innerHTML = '<div><p class="nota" style="margin:0">Hola, ' + esc(String(U.nombre || '').split(' ')[0]) + '</p><h1>' + esc(U.c.nombre) + '</h1>' + (U.cs.length > 1 ? '<button class="btn" id="otra" style="min-height:40px;margin-top:6px">Cambiar de congregación</button>' : '') + '</div>' +
-      r.avisos.map(function (a) {
-        return '<div class="aviso ' + (a.tipo === 'inc' ? 'inc' : 'msg') + '"><h3>' + (a.tipo === 'inc' ? '⚠ ' : '') + esc(a.titulo) + '</h3><p style="white-space:pre-line">' + esc(a.texto) + '</p><p class="nota">De ' + esc(a.de) + '</p>' +
-          '<div class="row"><button class="btn" data-leer="' + esc(a.id) + '" data-t="' + a.tipo + '">Marcar como leído</button><button class="btn" data-resp="' + esc(a.id) + '">Responder</button></div>' +
-          '<div data-caja="' + esc(a.id) + '" hidden style="margin-top:10px"><textarea class="in" aria-label="Respuesta"></textarea><button class="btn pri" style="margin-top:8px" data-env="' + esc(a.id) + '" data-t="' + a.tipo + '">Enviar respuesta</button></div></div>';
-      }).join('') +
-      '<button class="btn pri full" id="nuevo" style="min-height:58px;font-size:19px">Declarar un ingreso</button>' +
-      '<section class="card"><h2>Mis envíos</h2>' + (r.envios.length ? r.envios.map(function (e) {
-        return '<div class="envio"><div><b>' + esc(e.metodo + (e.metodo === 'Cajero' ? ' · ' + e.tipo : '')) + '</b><small>' + fechaTxt(e.fecha) + ' · ' + esc(e.id) + '</small></div><div style="text-align:right"><b>' + eur(e.total) + '</b><br><span class="pill ' + estilo(e) + '">' + esc(e.estado) + '</span>' + (e.fuera ? ' <span class="pill p-fp">Fuera de plazo</span>' : '') + '</div></div>';
-      }).join('') : '<p class="nota">Aún no hay envíos.</p>') + '</section>';
+  Promise.all([llamar('inicio', { token: U.token, cod: cod() }), cargarHistorial().catch(function () { return null; })]).then(function (x) {
+    var r = x[0], h = x[1];
+    if (!h) HIST = h = { cod: cod(), envios: (r.envios || []).map(function (e) { return Object.assign({ lineas: [] }, e); }), completo: false };
+    var E = h.envios, hoy = new Date(), y = hoy.getFullYear(), m = hoy.getMonth();
+    var deMes = function (yy, mm, hastaDia) { return E.filter(function (e) { var f = fISO(e.fecha); return f.getFullYear() === yy && f.getMonth() === mm && (!hastaDia || f.getDate() <= hastaDia); }); };
+    var este = deMes(y, m), pm = new Date(y, m - 1, 1), prev = deMes(pm.getFullYear(), pm.getMonth(), hoy.getDate());
+    var tEste = suma(este), tPrev = suma(prev), dp = tPrev ? Math.round(100 * (tEste - tPrev) / tPrev) : null;
+    var meses6 = [5, 4, 3, 2, 1, 0].map(function (k) { var d = new Date(y, m - k, 1); return { l: MES3[d.getMonth()], t: suma(deMes(d.getFullYear(), d.getMonth())) }; });
+    var mx = Math.max.apply(null, meses6.map(function (q) { return q.t; }).concat([1]));
+    var enPlazo = este.length ? Math.round(100 * este.filter(function (e) { return !e.fuera; }).length / este.length) : null;
+    var incs = E.filter(function (e) { return e.estado === 'Incidencia'; }).length;
+    var avisoHtml = function (a) {
+      var cls = a.tipo === 'inc' ? 'inc' : (a.prioridad || 'Normal'), et = a.tipo === 'inc' ? 'Incidencia en un envío' : a.prioridad === 'Urgente' ? 'Urgente' : a.prioridad === 'Importante' ? 'Importante' : 'Mensaje de Recaudación';
+      return '<div class="aviso ' + esc(cls) + '"><p class="et">' + et + '</p><h3>' + esc(a.titulo) + '</h3><p style="white-space:pre-line">' + esc(a.texto) + '</p>' +
+        '<div class="row"><button class="btn sm ' + (a.confirmar || a.tipo === 'inc' ? 'pri' : '') + '" data-leer="' + esc(a.id) + '" data-t="' + a.tipo + '">' + (a.confirmar ? 'Confirmo que lo he leído' : 'Marcar como leído') + '</button><button class="btn sm" data-resp="' + esc(a.id) + '">Responder</button></div>' +
+        '<div data-caja="' + esc(a.id) + '" hidden style="margin-top:12px"><textarea class="in" aria-label="Respuesta"></textarea><button class="btn pri sm" style="margin-top:8px" data-envr="' + esc(a.id) + '" data-t="' + a.tipo + '">Enviar respuesta</button></div></div>';
+    };
+    $('#app').innerHTML = '<div class="hola"><p class="nota">Hola, ' + esc(cap(String(U.nombre || '').split(' ')[0].toLowerCase())) + '</p><h1>' + esc(U.c.nombre) + '</h1><div class="chips"><span class="chip">' + esc(U.c.cod) + '</span><span class="chip">Distrito ' + esc(U.c.dist) + '</span><span class="chip">' + esc(U.c.rol || 'Pastor') + '</span>' + (U.cs.length > 1 ? '<button class="lnk" id="otra" style="padding:0 4px">Cambiar de congregación</button>' : '') + '</div></div>' +
+      r.avisos.map(avisoHtml).join('') +
+      '<button class="cta" id="nuevo"><span class="ico"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><span><b>Declarar un ingreso</b><span>Cajero, TPV o Bizum · 4 pasos</span></span><span class="fl" aria-hidden="true">›</span></button>' +
+      '<section class="card mes"><div class="cab"><h2>' + cap(MESES[m]) + ' ' + y + '</h2><button class="lnk" id="vermes">Ver detalle</button></div>' +
+      '<div><div class="cifra">' + eur(tEste) + '</div><div class="delta ' + (dp > 0 ? 'up' : dp < 0 ? 'down' : '') + '">' + (dp == null ? 'Declarado este mes' : (dp > 0 ? '▲ ' : dp < 0 ? '▼ ' : '') + Math.abs(dp) + ' % frente a ' + MESES[pm.getMonth()] + ' a estas alturas') + '</div></div>' +
+      '<div class="tres"><div><b>' + este.length + '</b><span>envíos</span></div><div><b>' + (enPlazo == null ? '—' : enPlazo + ' %') + '</b><span>en plazo</span></div><div><b>' + incs + '</b><span>incidencias</span></div></div>' +
+      '<div class="mini" role="img" aria-label="Declarado en los últimos seis meses">' + meses6.map(function (q, i) { return '<div title="' + esc(cap(q.l) + ': ' + eur(q.t)) + '"><i class="' + (i === 5 ? 'on' : '') + '" style="height:' + Math.max(4, Math.round(40 * q.t / mx)) + 'px"></i><small>' + q.l + '</small></div>'; }).join('') + '</div></section>' +
+      '<section class="card"><div class="shead"><h2>Últimos envíos</h2>' + (E.length ? '<button class="lnk" id="todos">Ver todos</button>' : '') + '</div>' +
+      (E.length ? E.slice(0, 4).map(filaEnvio).join('') : '<p class="vacio">Aún no hay envíos. Cuando declares uno, aparecerá aquí.</p>') + '</section>' +
+      (E.length ? '<button class="btn full" id="todos2">Ver todos mis envíos, balances y gráficos</button>' : '');
+    conectarFilas(E);
     var leer = function (id, tipo, resp) { return llamar('leido', { token: U.token, cod: cod(), id: id, tipo: tipo, respuesta: resp || '' }).then(function () { toast(resp ? 'Respuesta enviada a Recaudación' : 'Marcado como leído'); render(); }, function (e) { toast(e.message); }); };
     $$('[data-leer]').forEach(function (b) { b.onclick = function () { b.disabled = true; leer(b.dataset.leer, b.dataset.t); }; });
     $$('[data-resp]').forEach(function (b) { b.onclick = function () { var c = document.querySelector('[data-caja="' + b.dataset.resp + '"]'); c.hidden = !c.hidden; c.querySelector('textarea').focus(); }; });
-    $$('[data-env]').forEach(function (b) { b.onclick = function () { var t = document.querySelector('[data-caja="' + b.dataset.env + '"] textarea').value.trim(); if (!t) { toast('Escribe la respuesta'); return; } b.disabled = true; leer(b.dataset.env, b.dataset.t, t); }; });
-    var o = $('#otra'); if (o) o.onclick = function () { U.c = null; guardar('u', U); S = { v: 'elegir' }; render(); };
+    $$('[data-envr]').forEach(function (b) { b.onclick = function () { var t = document.querySelector('[data-caja="' + b.dataset.envr + '"] textarea').value.trim(); if (!t) { toast('Escribe la respuesta'); return; } b.disabled = true; leer(b.dataset.envr, b.dataset.t, t); }; });
+    var o = $('#otra'); if (o) o.onclick = function () { U.c = null; HIST = null; guardar('u', U); S = { v: 'elegir' }; render(); };
+    var ir = function (per) { return function () { S = { v: 'envios', f: { per: per, q: '', met: '', est: '', lim: 40 } }; render(); }; };
+    ['#todos', '#todos2'].forEach(function (s) { var b = $(s); if (b) b.onclick = ir('anio'); });
+    $('#vermes').onclick = ir('mes');
     $('#nuevo').onclick = function () { S = { v: 'metodo', d: { envio: idTemp(), lin: {}, otros: [], otrosD: [], biz: [{ n: '', dni: '', imp: '' }], fecha: ahoraLocal(0), banco: 'BBVA', archivos: [] } }; render(); };
   }).catch(function (e) { $('#app').innerHTML = '<p class="card err">' + esc(e.message) + '</p><button class="btn" id="re">Reintentar</button>'; $('#re').onclick = render; });
 };
 
-function pasos(n) { return '<div class="pasos" aria-label="Paso ' + n + ' de 4">' + [1, 2, 3, 4].map(function (i) { return '<i class="' + (i <= n ? 'on' : '') + '"></i>'; }).join('') + '</div>'; }
+// Periodos de «Mis envíos».
+function periodos() { var h = new Date(); return [['mes', 'Este mes'], ['ant', cap(MESES[(h.getMonth() + 11) % 12])], ['anio', String(h.getFullYear())], ['anioAnt', String(h.getFullYear() - 1)], ['todo', 'Todo']]; }
+function rango(per) {
+  var h = new Date(), y = h.getFullYear(), m = h.getMonth(), fin = function (yy, mm) { return new Date(yy, mm + 1, 0, 23, 59); };
+  if (per === 'mes') { var pd = Math.min(h.getDate(), new Date(y, m, 0).getDate()); return { a: new Date(y, m, 1), b: h, g: 'dia', n: MESES[m], pa: new Date(y, m - 1, 1), pb: new Date(y, m - 1, pd, 23, 59), pn: MESES[(m + 11) % 12] + ' a estas alturas' }; }
+  if (per === 'ant') return { a: new Date(y, m - 1, 1), b: fin(y, m - 1), g: 'dia', n: MESES[(m + 11) % 12], pa: new Date(y, m - 2, 1), pb: fin(y, m - 2), pn: MESES[(m + 10) % 12] };
+  if (per === 'anio') return { a: new Date(y, 0, 1), b: h, g: 'mes', n: String(y), pa: new Date(y - 1, 0, 1), pb: new Date(y - 1, m, h.getDate(), 23, 59), pn: (y - 1) + ' a estas alturas' };
+  if (per === 'anioAnt') return { a: new Date(y - 1, 0, 1), b: fin(y - 1, 11), g: 'mes', n: String(y - 1) };
+  return { a: new Date(1970, 0, 1), b: h, g: 'mes', n: 'todo el historial' };
+}
+var ESTADOS = [['', 'Todos'], ['rev', 'En revisión'], ['ok', 'Conciliados'], ['inc', 'Incidencias'], ['fp', 'Fuera de plazo']];
+function pasaFiltros(e, f) {
+  if (f.met && mk(e) !== f.met) return false;
+  if (f.est === 'rev' && e.estado !== 'Recibido') return false;
+  if (f.est === 'ok' && !/^(Conciliado|Exportado)$/.test(e.estado)) return false;
+  if (f.est === 'inc' && !(e.estado === 'Incidencia' || e.incidencia)) return false;
+  if (f.est === 'fp' && !e.fuera) return false;
+  var q = String(f.q || '').trim().toLowerCase();
+  if (!q) return true;
+  var qn = num(q), txt = [e.id, e.tipo, e.metodo, e.datafono, e.banco, estadoDe(e).t, fechaTxt(e.fecha)].concat((e.lineas || []).map(function (l) { return l[1] || C[l[0]] || ''; })).join(' ').toLowerCase();
+  if (txt.indexOf(q) >= 0) return true;
+  if (qn && /^[\d.,\s€]+$/.test(q)) return Math.abs(e.total - qn) < .005 || (e.lineas || []).some(function (l) { return Math.abs(l[2] - qn) < .005; }) || String(e.total).indexOf(String(qn)) === 0;
+  return false;
+}
+function niceTop(max) { var p = Math.pow(10, Math.floor(Math.log10(max || 1))), s = [1, 2, 2.5, 5, 10].map(function (k) { return k * p; }).filter(function (v) { return v * 3 >= max; })[0] || 10 * p; return { st: s, top: Math.ceil(max / s) * s }; }
+function kfmt(v) { return v >= 1000 ? (v / 1000).toLocaleString('es-ES', { maximumFractionDigits: 1 }) + 'k' : String(Math.round(v)); }
+function grafico(el, B) {
+  var W = Math.max(280, el.clientWidth), H = 196, pl = 38, pr = 4, pt = 8, pb = 24, keys = ['ef', 'tpv', 'biz'];
+  var tot = function (b) { return b.v.ef + b.v.tpv + b.v.biz; }, mx = Math.max.apply(null, B.map(tot).concat([1])), nt = niceTop(mx);
+  var bw = (W - pl - pr) / B.length, w = Math.max(3, Math.min(34, bw * .66)), ih = H - pt - pb, g = '';
+  for (var v = 0; v <= nt.top + .001; v += nt.st) { var yy = H - pb - ih * v / nt.top; g += '<line x1="' + pl + '" x2="' + W + '" y1="' + yy + '" y2="' + yy + '" stroke="var(--line)" stroke-width="1"/><text x="' + (pl - 6) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="11" fill="var(--muted)">' + kfmt(v) + '</text>'; }
+  var cada = Math.ceil(B.length / (W < 420 ? 6 : 10));
+  B.forEach(function (b, i) {
+    var x = pl + i * bw + (bw - w) / 2, y = H - pb, vis = keys.filter(function (k) { return b.v[k] > 0; });
+    vis.forEach(function (k, j) {
+      var h = ih * b.v[k] / nt.top, hh = Math.max(1, h - (j > 0 ? 2 : 0)), top = j === vis.length - 1, r = top ? Math.min(4, w / 2, hh) : 0, y0 = y - h;
+      g += top ? '<path d="M' + x + ',' + (y0 + hh) + 'V' + (y0 + r) + 'Q' + x + ',' + y0 + ' ' + (x + r) + ',' + y0 + 'H' + (x + w - r) + 'Q' + (x + w) + ',' + y0 + ' ' + (x + w) + ',' + (y0 + r) + 'V' + (y0 + hh) + 'Z" fill="var(--m-' + k + ')"/>' : '<rect x="' + x + '" y="' + y0 + '" width="' + w + '" height="' + hh + '" fill="var(--m-' + k + ')"/>';
+      y -= h;
+    });
+    if (i % cada === 0 || i === B.length - 1 && B.length < 14) g += '<text x="' + (pl + i * bw + bw / 2) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="11" fill="var(--muted)">' + esc(b.l) + '</text>';
+    g += '<rect x="' + (pl + i * bw) + '" y="0" width="' + bw + '" height="' + (H - pb) + '" fill="transparent" data-i="' + i + '"/>';
+  });
+  el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '" role="img" aria-label="Importe declarado por ' + (B.length > 13 ? 'día o mes' : 'periodo') + ' y método">' + g + '</svg><div class="tip" hidden></div>';
+  var tip = el.querySelector('.tip'), svg = el.querySelector('svg');
+  var ver = function (ev) {
+    var t = ev.target; if (!t.dataset || t.dataset.i == null) { tip.hidden = true; return; }
+    var b = B[+t.dataset.i], x = pl + (+t.dataset.i) * bw + bw / 2, s = W / svg.getBoundingClientRect().width;
+    tip.innerHTML = '<b>' + esc(b.full) + '</b>' + keys.filter(function (k) { return b.v[k]; }).map(function (k) { return '<span><em style="font-style:normal">' + MET[k] + '</em>' + eur(b.v[k]) + '</span>'; }).join('') + '<span><em style="font-style:normal">Total</em><strong>' + eur(tot(b)) + '</strong></span>';
+    tip.hidden = false; var px = Math.min(Math.max(x / s, 80), svg.getBoundingClientRect().width - 80); tip.style.left = px + 'px'; tip.style.top = '6px';
+  };
+  svg.addEventListener('pointermove', ver); svg.addEventListener('click', ver); svg.addEventListener('pointerleave', function () { tip.hidden = true; });
+}
+function descargarCSV(L) {
+  var q = function (v) { v = String(v == null ? '' : v); return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  var filas = [['Nº', 'Fecha', 'Método', 'Tipo', 'Concepto', 'Importe', 'Estado', 'Fuera de plazo']];
+  L.forEach(function (e) { var st = estadoDe(e).t; (e.lineas && e.lineas.length ? e.lineas : [['', '(sin desglose)', e.total]]).forEach(function (l) { filas.push([e.id, fechaTxt(e.fecha), e.metodo, e.tipo, l[1] || C[l[0]] || l[0], String(r2(l[2]).toFixed(2)).replace('.', ','), st, e.fuera ? 'Sí' : 'No']); }); });
+  var blob = new Blob(['﻿' + filas.map(function (r) { return r.map(q).join(';'); }).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'envios-' + cod() + '.csv'; document.body.appendChild(a); a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+VIEWS.envios = function () {
+  var f = S.f = S.f || { per: 'anio', q: '', met: '', est: '', lim: 40 };
+  if (!HIST || HIST.cod !== cod()) {
+    $('#app').innerHTML = '<p class="nota">Cargando…</p>';
+    cargarHistorial().then(render, function () { llamar('inicio', { token: U.token, cod: cod() }).then(function (r) { HIST = { cod: cod(), envios: (r.envios || []).map(function (e) { return Object.assign({ lineas: [] }, e); }), completo: false }; render(); }, function (e) { $('#app').innerHTML = '<p class="card err">' + esc(e.message) + '</p>'; }); });
+    return;
+  }
+  var R = rango(f.per), E = HIST.envios, enR = function (e, a, b) { var d = fISO(e.fecha); return d >= a && d <= b; };
+  var L = E.filter(function (e) { return enR(e, R.a, R.b) && pasaFiltros(e, f); });
+  var P = R.pa ? E.filter(function (e) { return enR(e, R.pa, R.pb) && pasaFiltros(e, f); }) : null;
+  var T = suma(L), TP = P ? suma(P) : 0, dp = P && TP ? Math.round(100 * (T - TP) / TP) : null;
+  var enPlazo = L.length ? Math.round(100 * L.filter(function (e) { return !e.fuera; }).length / L.length) : null;
+  var incs = L.filter(function (e) { return e.estado === 'Incidencia'; }).length;
+  // Cubos para el gráfico.
+  var B = [];
+  if (R.g === 'dia') { var dias = new Date(R.a.getFullYear(), R.a.getMonth() + 1, 0).getDate(); for (var i = 1; i <= dias; i++) B.push({ l: String(i), full: i + ' de ' + MESES[R.a.getMonth()], v: { ef: 0, tpv: 0, biz: 0 } }); L.forEach(function (e) { B[fISO(e.fecha).getDate() - 1].v[mk(e)] += e.total; }); }
+  else {
+    var ini = f.per === 'todo' && L.length ? fISO(L[L.length - 1].fecha) : R.a, a0 = new Date(ini.getFullYear(), ini.getMonth(), 1), b0 = f.per === 'anioAnt' ? new Date(R.a.getFullYear(), 11, 1) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    if (f.per === 'anio') a0 = new Date(R.a.getFullYear(), 0, 1);
+    for (var d = new Date(a0); d <= b0; d.setMonth(d.getMonth() + 1)) B.push({ k: d.getFullYear() * 12 + d.getMonth(), l: MES3[d.getMonth()] + (f.per === 'todo' && d.getMonth() === 0 ? ' ' + String(d.getFullYear()).slice(2) : ''), full: cap(MESES[d.getMonth()]) + ' ' + d.getFullYear(), v: { ef: 0, tpv: 0, biz: 0 } });
+    var idx = {}; B.forEach(function (b, j) { idx[b.k] = j; });
+    L.forEach(function (e) { var x = fISO(e.fecha), j = idx[x.getFullYear() * 12 + x.getMonth()]; if (j != null) B[j].v[mk(e)] += e.total; });
+  }
+  var porMet = { ef: 0, tpv: 0, biz: 0 }; L.forEach(function (e) { porMet[mk(e)] += e.total; });
+  var porC = {}; L.forEach(function (e) { (e.lineas || []).forEach(function (l) { var n = l[0] === 'OT' || l[0] === 'OD' ? 'Otros conceptos' : (C[l[0]] || l[1] || l[0]); porC[n] = (porC[n] || 0) + l[2]; }); });
+  var conc = Object.keys(porC).map(function (k) { return [k, r2(porC[k])]; }).sort(function (a, b) { return b[1] - a[1]; });
+  if (conc.length > 8) { var resto = conc.slice(7).reduce(function (s, c) { return s + c[1]; }, 0); conc = conc.slice(0, 7).concat([['Resto de conceptos', r2(resto)]]); }
+  var cmax = conc.length ? conc[0][1] : 1, ctot = conc.reduce(function (s, c) { return s + c[1]; }, 0) || 1;
+  // Lista agrupada por mes.
+  var lista = '', mesAct = '', visibles = L.slice(0, f.lim);
+  visibles.forEach(function (e) {
+    var x = fISO(e.fecha), km = x.getFullYear() + '-' + x.getMonth();
+    if (km !== mesAct) { mesAct = km; var st = suma(L.filter(function (z) { var y = fISO(z.fecha); return y.getFullYear() === x.getFullYear() && y.getMonth() === x.getMonth(); })); lista += '<div class="mesg"><span>' + MESES[x.getMonth()] + ' ' + x.getFullYear() + '</span><span>' + eur(st) + '</span></div>'; }
+    lista += filaEnvio(e);
+  });
+  var nFil = (f.met ? 1 : 0) + (f.est ? 1 : 0), qc = String(f.q || '').trim().toLowerCase(), qConc = null;
+  if (qc.length > 2 && !/^[\d.,\s€]+$/.test(qc)) { var sumC = 0, nombres = {}; L.forEach(function (e) { (e.lineas || []).forEach(function (l) { var n = C[l[0]] || l[1] || ''; if (n.toLowerCase().indexOf(qc) >= 0) { sumC += l[2]; nombres[n] = 1; } }); }); if (sumC) qConc = [Object.keys(nombres).slice(0, 2).join(', ') + (Object.keys(nombres).length > 2 ? '…' : ''), r2(sumC)]; }
+  $('#app').innerHTML = '<div class="volver"><button id="vol" aria-label="Volver al inicio">‹</button><div><h1>Mis envíos</h1><p class="nota" style="margin:0">' + esc(U.c.nombre) + ' · ' + esc(U.c.cod) + '</p></div></div>' +
+    '<div class="seg" role="group" aria-label="Periodo">' + periodos().map(function (p) { return '<button data-per="' + p[0] + '" aria-pressed="' + (f.per === p[0]) + '">' + p[1] + '</button>'; }).join('') + '</div>' +
+    '<div class="brow"><div class="buscar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input class="in" id="q" type="search" placeholder="Buscar nº, concepto, importe…" value="' + esc(f.q) + '" aria-label="Buscar en mis envíos" autocomplete="off"></div>' +
+    '<button class="fbtn" id="fbtn" aria-expanded="' + !!f.panel + '" aria-controls="fpanel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>Filtros' + (nFil ? '<i>' + nFil + '</i>' : '') + '</button></div>' +
+    (f.panel ? '<div class="card fpanel" id="fpanel"><p class="sec">Método</p><div class="fchips">' + [['', 'Todos'], ['ef', 'Cajero'], ['tpv', 'TPV'], ['biz', 'Bizum']].map(function (o) { return '<button class="fchip" data-met="' + o[0] + '" aria-pressed="' + (f.met === o[0]) + '">' + (o[0] ? '<i style="background:var(--m-' + o[0] + ')"></i>' : '') + o[1] + '</button>'; }).join('') + '</div>' +
+      '<p class="sec">Estado</p><div class="fchips">' + ESTADOS.map(function (o) { return '<button class="fchip" data-est="' + o[0] + '" aria-pressed="' + (f.est === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>' :
+      (nFil ? '<div class="activos">' + (f.met ? '<button data-quitar="met" aria-label="Quitar filtro ' + MET[f.met] + '">' + MET[f.met] + ' ✕</button>' : '') + (f.est ? '<button data-quitar="est" aria-label="Quitar filtro">' + ESTADOS.filter(function (o) { return o[0] === f.est; })[0][1] + ' ✕</button>' : '') + '</div>' : '')) +
+    (nFil || f.q ? '<p class="nota" style="margin:-6px 0 0">' + L.length + ' envíos con estos filtros · <button class="lnk" id="limpiar" style="padding:0">Quitar filtros</button></p>' : '') +
+    '<div class="kp"><div class="big1"><span>Declarado · ' + esc(R.n) + '</span><b>' + eur(T) + '</b>' + (qConc ? '<span class="sub">De ello, ' + esc(qConc[0]) + ': <b style="display:inline;font-size:inherit">' + eur(qConc[1]) + '</b></span>' : '') + '<span class="delta ' + (dp > 0 ? 'up' : dp < 0 ? 'down' : '') + '">' + (dp == null ? (P ? 'Sin envíos en ' + esc(R.pn) + ' para comparar' : '&nbsp;') : (dp > 0 ? '▲ ' : dp < 0 ? '▼ ' : '') + Math.abs(dp) + ' % frente a ' + esc(R.pn) + ' (' + eur0(TP) + ')') + '</span></div>' +
+    '<div><b>' + L.length + '</b><span>envíos</span></div><div><b>' + (L.length ? eur0(T / L.length) : '—') + '</b><span>media por envío</span></div>' +
+    '<div><b>' + (enPlazo == null ? '—' : enPlazo + ' %') + '</b><span>enviados en plazo</span></div><div><b>' + incs + '</b><span>con incidencia abierta</span></div></div>' +
+    (L.length ? '<section class="card"><div class="shead"><h2>' + (R.g === 'dia' ? 'Cada día' : 'Cada mes') + '</h2></div><div class="graf" id="g"></div>' +
+      '<div class="ley">' + ['ef', 'tpv', 'biz'].filter(function (k) { return porMet[k] || !f.met; }).map(function (k) { return '<span><i style="background:var(--m-' + k + ')"></i>' + MET[k] + ' <em>' + eur0(porMet[k]) + (T ? ' · ' + Math.round(100 * porMet[k] / T) + ' %' : '') + '</em></span>'; }).join('') + '</div></section>' +
+      '<section class="card"><div class="shead"><h2>Por concepto</h2></div>' + (conc.length ? conc.map(function (c) { return '<div class="hb"><span>' + esc(c[0]) + '</span><b>' + eur(c[1]) + '<em>' + Math.round(100 * c[1] / ctot) + ' %</em></b><span class="t"><i style="width:' + Math.max(1, 100 * c[1] / cmax) + '%"></i></span></div>'; }).join('') : '<p class="nota">El desglose por concepto aparecerá cuando se actualice el servicio.</p>') + '</section>' : '') +
+    '<section class="card"><div class="shead"><h2>' + (L.length === 1 ? '1 envío' : L.length + ' envíos') + '</h2>' + (L.length ? '<button class="lnk" id="csv">Descargar (CSV)</button>' : '') + '</div>' +
+    (L.length ? lista + (L.length > f.lim ? '<button class="btn full" id="mas" style="margin-top:12px">Ver ' + Math.min(40, L.length - f.lim) + ' más</button>' : '') : '<p class="vacio">No hay envíos ' + (nFil || f.q ? 'con estos filtros' : 'en este periodo') + '.</p>') + '</section>' +
+    (HIST.completo ? '' : '<p class="proto">Se muestran los últimos envíos. El historial completo llegará con la próxima actualización del servicio.</p>');
+  if (L.length) grafico($('#g'), B);
+  conectarFilas(L);
+  $('#vol').onclick = function () { S = { v: 'inicio' }; render(); };
+  $$('[data-per]').forEach(function (b) { b.onclick = function () { f.per = b.dataset.per; f.lim = 40; render(); }; });
+  $$('[data-met]').forEach(function (b) { b.onclick = function () { f.met = b.dataset.met; f.lim = 40; var y = window.scrollY; render(); window.scrollTo(0, y); }; });
+  $$('[data-est]').forEach(function (b) { b.onclick = function () { f.est = b.dataset.est; f.lim = 40; var y = window.scrollY; render(); window.scrollTo(0, y); }; });
+  $('#fbtn').onclick = function () { f.panel = !f.panel; var y = window.scrollY; render(); window.scrollTo(0, y); };
+  $$('[data-quitar]').forEach(function (b) { b.onclick = function () { f[b.dataset.quitar] = ''; render(); }; });
+  var q = $('#q'), tq;
+  q.oninput = function () { clearTimeout(tq); tq = setTimeout(function () { f.q = q.value; f.lim = 40; var y = window.scrollY; render(); window.scrollTo(0, y); var n = $('#q'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 220); };
+  var lp = $('#limpiar'); if (lp) lp.onclick = function () { f.q = ''; f.met = ''; f.est = ''; f.panel = false; render(); };
+  var mas = $('#mas'); if (mas) mas.onclick = function () { var y = window.scrollY; f.lim += 40; render(); window.scrollTo(0, y); };
+  var csv = $('#csv'); if (csv) csv.onclick = function () { descargarCSV(L); toast('Descargando ' + L.length + ' envíos'); };
+};
+
+var PASOS = ['Cómo llegó', 'Desglose', 'Justificante', 'Revisar'];
+function pasos(n) { return '<div class="paso"><small>Paso ' + n + ' de 4 · ' + PASOS[n - 1] + '</small><div class="pasos" aria-hidden="true">' + [1, 2, 3, 4].map(function (i) { return '<i class="' + (i <= n ? 'on' : '') + '"></i>'; }).join('') + '</div></div>'; }
 
 VIEWS.metodo = function () {
   var d = S.d;
@@ -196,6 +432,14 @@ function lineasDe(d) {
   Object.keys(d.lin).forEach(function (k) { if (num(d.lin[k])) L.push([C[k], num(d.lin[k])]); });
   d.otros.forEach(function (o) { if (num(o.imp)) L.push(['Otros: ' + o.desc, num(o.imp)]); });
   d.otrosD.forEach(function (o) { if (num(o.imp)) L.push(['Otros distritales: ' + o.desc, num(o.imp)]); });
+  return L;
+}
+
+function lineasCod(d) {
+  var L = [];
+  Object.keys(d.lin).forEach(function (k) { if (num(d.lin[k])) L.push([k, C[k], num(d.lin[k])]); });
+  d.otros.forEach(function (o) { if (num(o.imp)) L.push(['OT', 'Otros: ' + o.desc, num(o.imp)]); });
+  d.otrosD.forEach(function (o) { if (num(o.imp)) L.push(['OD', 'Otros distritales: ' + o.desc, num(o.imp)]); });
   return L;
 }
 
@@ -344,7 +588,7 @@ VIEWS.revisar = function () {
       importeJustificante: num(d.leido.imp), conceptoLeido: d.leido.conc || '', fechaLeida: d.leido.fecha || '',
       lecturaB: d.lecB ? { importe: d.lecB.importe, fecha: d.lecB.fecha, hora: d.lecB.hora, concepto: d.lecB.concepto } : null,
       explicacion: d.expl || ''
-    }).then(function (r) { S = { v: 'hecho', r: r }; render(); }).catch(function (e) { fin(); $('#err').textContent = e.message; });
+    }).then(function (r) { HIST = null; S = { v: 'hecho', r: r }; render(); }).catch(function (e) { fin(); $('#err').textContent = e.message; });
   };
 };
 
