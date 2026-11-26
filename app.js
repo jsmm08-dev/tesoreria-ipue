@@ -3,7 +3,7 @@
  * Sin ENDPOINT, o con ?demo en la dirección, funciona en modo de prueba sin enviar nada. */
 (function () {
 'use strict';
-var ENDPOINT = '';   // URL /exec de la aplicación web de Apps Script.
+var ENDPOINT = 'https://script.google.com/macros/s/AKfycbxzflk2Cvnf5MFPvW_IYkxIA2kRkysJNYShor3zZHI_mgYHN-vniMP22xgwEj9A98h8/exec';   // URL /exec de la aplicación web de Apps Script.
 var DEMO = /[?&]demo(=|&|$)/.test(location.search) || !ENDPOINT;
 var TESSERACT = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
 
