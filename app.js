@@ -98,6 +98,7 @@ function demo(accion, d) {
       }
       if (accion === 'inicio') return res({ avisos: DEMO_DB.avisos, envios: demoHistorial().slice(0, 20) });
       if (accion === 'misEnvios') return res({ envios: demoHistorial() });
+      if (accion === 'solicitarAcceso') { if (!d.telefono && !d.correo) return rej(new Error('Déjenos un teléfono o un correo para poder responderle.')); return res({ id: 'A261127-0' + (1 + Math.floor(Math.random() * 9)) }); }
       if (accion === 'leido') { DEMO_DB.avisos = DEMO_DB.avisos.filter(function (a) { return a.id !== d.id; }); return res({ ok: true }); }
       if (accion === 'subirJustificante') return res({ id: 'demo' + Math.random().toString(36).slice(2) });
       if (accion === 'leerJustificante') return res({ disponible: false });
@@ -181,10 +182,11 @@ VIEWS.login = function () {
     '<div><label class="lbl" for="u">Usuario</label><div class="campo"><span class="ico">' + IC.usuario + '</span><input class="in" id="u" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="nombre.apellido"></div></div>' +
     '<div><label class="lbl" for="p">Contraseña</label><div class="campo pw"><span class="ico">' + IC.candado + '</span><input class="in" id="p" type="password" autocomplete="current-password"><button type="button" class="ojo" id="ojo" aria-label="Mostrar la contraseña">' + IC.ojo + '</button></div></div>' +
     '<p class="err" id="err" role="alert">' + esc(S.msg || '') + '</p><button class="btn pri full" id="ent">Continuar</button>' +
-    '<p class="nota" style="margin:0;text-align:center">¿No puedes entrar? Escribe a <a class="lnk" href="mailto:recaudacion@ipue.es">recaudacion@ipue.es</a></p></form>' +
+    '<button type="button" class="ayuda" id="ayuda"><span class="aq" aria-hidden="true">?</span><span>¿No puedes entrar? <b>Avisa a Recaudación</b></span></button></form>' +
     '<div class="lpie"><button type="button" class="tswitch" id="tsw"><i></i><span id="tswt"></span></button><span class="proto">tesoreria.ipue.app</span></div></section></div>';
   var tt = function () { $('#tswt').textContent = temaActual() === 'dark' ? 'Modo noche' : 'Modo día'; }; tt();
   $('#tsw').onclick = function () { cambiarTema(); tt(); };
+  $('#ayuda').onclick = function () { ayudaAcceso($('#u').value, $('#err').textContent); };
   $('#ojo').onclick = function () { var p = $('#p'), v = p.type === 'password'; p.type = v ? 'text' : 'password'; this.innerHTML = v ? IC.ojoNo : IC.ojo; this.setAttribute('aria-label', v ? 'Ocultar la contraseña' : 'Mostrar la contraseña'); };
   $('#f').onsubmit = function (e) {
     e.preventDefault();
@@ -195,6 +197,53 @@ VIEWS.login = function () {
     }).catch(function (e) { fin(); $('#err').textContent = e.message; });
   };
 };
+// ── «¿No puedes entrar?»: aviso a Recaudación ──────────────────
+// Llega al panel de Recaudación (sección Accesos) con un diagnóstico automático; aquí no se muestra nada de él.
+var PROBLEMAS = [['clave', 'No recuerdo la contraseña'], ['incorrecto', 'Me dice que el usuario o la contraseña no son correctos'], ['bloqueado', 'Me dice «Demasiados intentos»'], ['usuario', 'No sé cuál es mi usuario'], ['otro', 'Otra cosa']];
+function ayudaAcceso(usuario, error) {
+  var A = { rol: 'Pastor', problema: /Demasiados/.test(error || '') ? 'bloqueado' : /incorrectos/.test(error || '') ? 'incorrecto' : '' };
+  var v = document.createElement('div'); v.className = 'velo';
+  v.innerHTML = '<div class="hoja" role="dialog" aria-modal="true" aria-labelledby="aytit"><div class="asa"></div>' +
+    '<div class="shead"><div><h2 id="aytit" style="font-size:21px">¿No puedes entrar?</h2><p class="nota" style="margin:2px 0 0">Recaudación General lo verá en su panel y te ayudará.</p></div><button type="button" class="btn sm" data-x>Cerrar</button></div>' +
+    '<form id="fa" novalidate style="display:grid;gap:14px;margin-top:12px">' +
+    '<div><label class="lbl" for="an">Nombre y apellidos</label><input class="in" id="an" autocomplete="name" maxlength="80"></div>' +
+    '<div><label class="lbl" for="ac">Congregación</label><input class="in" id="ac" maxlength="80" placeholder="Nombre o código, p. ej. Alcorcón o I137"></div>' +
+    '<div><span class="lbl">Soy</span><div class="seg" role="group" aria-label="Soy"><button type="button" data-rol="Pastor" aria-pressed="true">Pastor</button><button type="button" data-rol="Recaudador local" aria-pressed="false">Recaudador local</button></div></div>' +
+    '<div><label class="lbl" for="au">Usuario que intentas usar <span style="color:var(--subtle)">(si lo sabes)</span></label><input class="in" id="au" autocapitalize="none" spellcheck="false" placeholder="nombre.apellido" value="' + esc(usuario || '') + '"></div>' +
+    '<div><span class="lbl">¿Qué te pasa?</span><div class="fchips" id="ap">' + PROBLEMAS.map(function (p) { return '<button type="button" class="fchip" data-p="' + p[0] + '" aria-pressed="' + (A.problema === p[0]) + '">' + esc(p[1]) + '</button>'; }).join('') + '</div></div>' +
+    '<div><label class="lbl" for="am">Cuéntanos algo más <span style="color:var(--subtle)">(opcional)</span></label><textarea class="in" id="am" maxlength="1000" placeholder="Por ejemplo: desde cuándo te pasa o qué mensaje te sale"></textarea></div>' +
+    '<div><span class="lbl">¿Cómo te respondemos? <span style="color:var(--subtle)">(al menos uno)</span></span><div class="grid2"><input class="in" id="at" type="tel" autocomplete="tel" inputmode="tel" placeholder="Teléfono (WhatsApp)" aria-label="Teléfono"><input class="in" id="ae" type="email" autocomplete="email" placeholder="Correo" aria-label="Correo"></div></div>' +
+    '<div class="trampa" aria-hidden="true"><label>Web <input id="aw" tabindex="-1" autocomplete="off"></label></div>' +
+    '<p class="err" id="aerr" role="alert"></p><button class="btn pri full" id="aenv">Enviar aviso</button>' +
+    '<p class="proto" style="margin:0">Solo lo ve Recaudación General. No escribas aquí tu contraseña.</p></form></div>';
+  document.body.appendChild(v);
+  var cerrar = function () { v.remove(); document.removeEventListener('keydown', k); }, k = function (ev) { if (ev.key === 'Escape') cerrar(); };
+  document.addEventListener('keydown', k);
+  v.onclick = function (ev) { if (ev.target === v) cerrar(); };
+  v.querySelector('[data-x]').onclick = cerrar;
+  var q = function (s) { return v.querySelector(s); };
+  q('#an').focus();
+  v.querySelectorAll('[data-rol]').forEach(function (b) { b.onclick = function () { A.rol = b.dataset.rol; v.querySelectorAll('[data-rol]').forEach(function (x) { x.setAttribute('aria-pressed', x === b); }); }; });
+  v.querySelectorAll('[data-p]').forEach(function (b) { b.onclick = function () { A.problema = b.dataset.p; v.querySelectorAll('[data-p]').forEach(function (x) { x.setAttribute('aria-pressed', x === b); }); }; });
+  q('#fa').onsubmit = function (ev) {
+    ev.preventDefault();
+    var d = { nombre: q('#an').value.trim(), congregacion: q('#ac').value.trim(), rol: A.rol, usuario: q('#au').value.trim(), problema: A.problema || 'otro', mensaje: q('#am').value.trim(), telefono: q('#at').value.trim(), correo: q('#ae').value.trim(), web: q('#aw').value };
+    var e = d.nombre.length < 3 ? 'Escribe tu nombre y apellidos.' : d.congregacion.length < 2 ? 'Escribe tu congregación.' : !A.problema ? 'Elige qué te pasa.' : !d.telefono && !d.correo ? 'Déjanos un teléfono o un correo para poder responderte.' : A.problema === 'otro' && d.mensaje.length < 5 ? 'Cuéntanos brevemente qué te pasa.' : '';
+    if (e) { q('#aerr').textContent = e; return; }
+    q('#aerr').textContent = '';
+    var fin = espera(q('#aenv'), 'Enviando…');
+    llamar('solicitarAcceso', d).then(function (r) {
+      var via = d.telefono && d.correo ? 'por WhatsApp o por correo' : d.telefono ? 'por WhatsApp o por teléfono' : 'por correo';
+      q('.hoja').innerHTML = '<div class="asa"></div><div class="hecho"><span class="okg" aria-hidden="true"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>' +
+        '<h2 style="font-size:22px">Aviso enviado</h2>' + (r.id ? '<p class="nota" style="margin:0">Nº ' + esc(r.id) + '</p>' : '') +
+        '<p style="margin:8px 0 0">Recaudación General lo verá en su panel y te responderá ' + via + '.</p>' +
+        (A.problema === 'bloqueado' ? '<p class="nota" style="margin:6px 0 0">Si era por los intentos, espera 15 minutos y vuelve a probar con calma.</p>' : '') +
+        '<button type="button" class="btn pri full" style="margin-top:18px" data-x>Entendido</button></div>';
+      q('[data-x]').onclick = cerrar; q('[data-x]').focus();
+    }).catch(function (x) { fin(); q('#aerr').textContent = x.message; });
+  };
+}
+
 VIEWS.elegir = function () {
   $('#app').innerHTML = '<h1>¿De qué congregación es el ingreso?</h1><div class="metodos">' + U.cs.map(function (c, i) { return '<button class="opt" data-i="' + i + '"><div><b>' + esc(c.nombre) + '</b><span>' + esc(c.cod) + ' · Distrito ' + esc(c.dist) + '</span></div></button>'; }).join('') + '</div>';
   $$('[data-i]').forEach(function (b) { b.onclick = function () { U.c = U.cs[+b.dataset.i]; guardar('u', U); S = { v: 'inicio' }; render(); }; });
