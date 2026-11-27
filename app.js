@@ -121,11 +121,49 @@ function demo(accion, d) {
 var U = recuperar('u'), S = { v: U ? (U.c ? 'inicio' : 'elegir') : 'login' };
 var VIEWS = {};
 function render() {
-  $('#salir').hidden = !U || !U.c;
-  $('#sub').textContent = U && U.c ? U.c.nombre + ' · ' + U.c.cod : 'tesoreria.ipue.app';
+  var dentro = !!(U && U.c);
+  document.documentElement.dataset.vista = VIEWS[S.v] && U ? S.v : 'login';
+  cerrarMenu();
+  $('#uchip').hidden = !dentro;
+  if (dentro) { $('#uav').textContent = iniciales(U.nombre); $('#ucod').textContent = U.c.cod; }
   (VIEWS[S.v] || VIEWS.login)();
   window.scrollTo(0, 0);
 }
+// ── Tema (día / noche), como en EDEM ────────────────────────────
+function temaActual() { var t = document.documentElement.dataset.theme; return t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); }
+function cambiarTema() { var t = temaActual() === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = t; try { localStorage.setItem('tes.tema', t); } catch (e) { } }
+function iniciales(n) { var p = String(n || '').trim().split(/\s+/).filter(Boolean); return ((p[0] || '?').charAt(0) + (p[1] || '').charAt(0)).toUpperCase(); }
+var IC = {
+  sol: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  luna: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+  casa: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>',
+  salir: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 12H4M8 8l-4 4 4 4M13 4h6a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-6"/></svg>',
+  usuario: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>',
+  candado: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
+  ojo: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  ojoNo: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>'
+};
+function cerrarMenu() { var m = $('#menu'); if (m) m.remove(); var c = $('#uchip'); if (c) c.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', fueraMenu, true); }
+function fueraMenu(ev) { if (!ev.target.closest('#menu') && !ev.target.closest('#uchip')) cerrarMenu(); }
+function abrirMenu() {
+  if ($('#menu')) return cerrarMenu();
+  var noche = temaActual() === 'dark';
+  var m = document.createElement('div'); m.className = 'menu'; m.id = 'menu'; m.setAttribute('role', 'menu');
+  m.innerHTML = '<div class="mh"><b>' + esc(U.nombre || '') + '</b><small>' + esc(U.c.nombre) + ' · ' + esc(U.c.cod) + ' · ' + esc(U.c.rol || 'Pastor') + '</small></div><div class="mb">' +
+    (U.cs.length > 1 ? '<button role="menuitem" data-a="otra">' + IC.casa + 'Cambiar de congregación</button>' : '') +
+    '<button role="menuitem" data-a="tema">' + (noche ? IC.sol + 'Modo día' : IC.luna + 'Modo noche') + '</button>' +
+    '<button role="menuitem" class="dan" data-a="salir">' + IC.salir + 'Salir</button></div>';
+  document.body.appendChild(m); var rc = $('#uchip').getBoundingClientRect(); m.style.top = Math.round(rc.bottom + 8) + 'px'; m.style.right = Math.max(12, Math.round(innerWidth - rc.right)) + 'px'; $('#uchip').setAttribute('aria-expanded', 'true');
+  m.onclick = function (ev) {
+    var b = ev.target.closest('[data-a]'); if (!b) return; var a = b.dataset.a; cerrarMenu();
+    if (a === 'tema') cambiarTema();
+    else if (a === 'salir') salir();
+    else if (a === 'otra') { U.c = null; HIST = null; guardar('u', U); S = { v: 'elegir' }; render(); }
+  };
+  setTimeout(function () { document.addEventListener('click', fueraMenu, true); }, 0);
+}
+document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') cerrarMenu(); });
+
 function salir(msg) { U = null; HIST = null; guardar('u', null); S = { v: 'login', msg: msg || '' }; render(); }
 function cod() { return U.c.cod; }
 function codl() { return U.c.cod.toLowerCase(); }
@@ -134,11 +172,20 @@ function codigoDe(txt) { var m = String(txt || '').toUpperCase().replace(/-/g, '
 function espera(btn, txt) { btn.disabled = true; btn.dataset.t = btn.textContent; btn.textContent = txt; return function () { btn.disabled = false; btn.textContent = btn.dataset.t; }; }
 
 VIEWS.login = function () {
-  $('#app').innerHTML = '<div><h1>Declarar un ingreso al fondo nacional</h1><p class="nota" style="margin:0">Entra con tu usuario (nombre.primerapellido) y la contraseña de pastor o de recaudador de tu congregación.</p></div>' +
-    '<form class="card" id="f" style="display:grid;gap:14px" novalidate><div><label class="lbl" for="u">Usuario</label><input class="in" id="u" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="nombre.apellido"></div>' +
-    '<div><label class="lbl" for="p">Contraseña</label><input class="in" id="p" type="password" autocomplete="current-password"></div>' +
-    '<p class="err" id="err" role="alert">' + esc(S.msg || '') + '</p><button class="btn pri full" id="ent">Entrar</button></form>' +
-    '<p class="nota">¿No puedes entrar? Escribe a Recaudación: recaudacion@ipue.es</p>';
+  $('#app').innerHTML = '<div class="acceso"><section class="bpane" aria-hidden="true"><div class="dots"></div><div class="mapa"></div>' +
+    '<img class="blogo" src="logo-blanco.png" alt="">' +
+    '<h2>Formulario Digital<span>Envíos al fondo nacional</span></h2>' +
+    '<p class="bpie"><b>Tesorería IPUE</b>Sede Administrativa Nacional</p></section>' +
+    '<section class="fstage"><form class="lcard" id="f" novalidate><h1 class="greet">Hola,<br>Dios te bendiga.</h1>' +
+    '<p class="nota" style="margin:-6px 0 0">Entra con tu usuario y la contraseña de pastor o de recaudador de tu congregación.</p>' +
+    '<div><label class="lbl" for="u">Usuario</label><div class="campo"><span class="ico">' + IC.usuario + '</span><input class="in" id="u" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="nombre.apellido"></div></div>' +
+    '<div><label class="lbl" for="p">Contraseña</label><div class="campo pw"><span class="ico">' + IC.candado + '</span><input class="in" id="p" type="password" autocomplete="current-password"><button type="button" class="ojo" id="ojo" aria-label="Mostrar la contraseña">' + IC.ojo + '</button></div></div>' +
+    '<p class="err" id="err" role="alert">' + esc(S.msg || '') + '</p><button class="btn pri full" id="ent">Continuar</button>' +
+    '<p class="nota" style="margin:0;text-align:center">¿No puedes entrar? Escribe a <a class="lnk" href="mailto:recaudacion@ipue.es">recaudacion@ipue.es</a></p></form>' +
+    '<div class="lpie"><button type="button" class="tswitch" id="tsw"><i></i><span id="tswt"></span></button><span class="proto">tesoreria.ipue.app</span></div></section></div>';
+  var tt = function () { $('#tswt').textContent = temaActual() === 'dark' ? 'Modo noche' : 'Modo día'; }; tt();
+  $('#tsw').onclick = function () { cambiarTema(); tt(); };
+  $('#ojo').onclick = function () { var p = $('#p'), v = p.type === 'password'; p.type = v ? 'text' : 'password'; this.innerHTML = v ? IC.ojoNo : IC.ojo; this.setAttribute('aria-label', v ? 'Ocultar la contraseña' : 'Mostrar la contraseña'); };
   $('#f').onsubmit = function (e) {
     e.preventDefault();
     var fin = espera($('#ent'), 'Entrando…');
@@ -218,9 +265,9 @@ VIEWS.inicio = function () {
         '<div class="row"><button class="btn sm ' + (a.confirmar || a.tipo === 'inc' ? 'pri' : '') + '" data-leer="' + esc(a.id) + '" data-t="' + a.tipo + '">' + (a.confirmar ? 'Confirmo que lo he leído' : 'Marcar como leído') + '</button><button class="btn sm" data-resp="' + esc(a.id) + '">Responder</button></div>' +
         '<div data-caja="' + esc(a.id) + '" hidden style="margin-top:12px"><textarea class="in" aria-label="Respuesta"></textarea><button class="btn pri sm" style="margin-top:8px" data-envr="' + esc(a.id) + '" data-t="' + a.tipo + '">Enviar respuesta</button></div></div>';
     };
-    $('#app').innerHTML = '<div class="hola"><p class="nota">Hola, ' + esc(cap(String(U.nombre || '').split(' ')[0].toLowerCase())) + '</p><h1>' + esc(U.c.nombre) + '</h1><div class="chips"><span class="chip">' + esc(U.c.cod) + '</span><span class="chip">Distrito ' + esc(U.c.dist) + '</span><span class="chip">' + esc(U.c.rol || 'Pastor') + '</span>' + (U.cs.length > 1 ? '<button class="lnk" id="otra" style="padding:0 4px">Cambiar de congregación</button>' : '') + '</div></div>' +
+    $('#app').innerHTML = '<div class="hola"><p class="gsm">Dios te bendiga, ' + esc(cap(String(U.nombre || '').split(' ')[0].toLowerCase())) + '.</p><h1>' + esc(U.c.nombre) + '</h1><div class="chips"><span class="chip">' + esc(U.c.cod) + '</span><span class="chip">Distrito ' + esc(U.c.dist) + '</span><span class="chip">' + esc(U.c.rol || 'Pastor') + '</span>' + (U.cs.length > 1 ? '<button class="lnk" id="otra" style="padding:0 4px">Cambiar de congregación</button>' : '') + '</div></div>' +
       r.avisos.map(avisoHtml).join('') +
-      '<button class="cta" id="nuevo"><span class="ico"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><span><b>Declarar un ingreso</b><span>Cajero, TPV o Bizum · 4 pasos</span></span><span class="fl" aria-hidden="true">›</span></button>' +
+      '<button class="cta" id="nuevo"><span class="ico"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><span><b>Declarar un ingreso</b><span>Cajero, TPV o Bizum · 4 pasos</span></span><span class="fl" aria-hidden="true">›</span></button>' +
       '<section class="card mes"><div class="cab"><h2>' + cap(MESES[m]) + ' ' + y + '</h2><button class="lnk" id="vermes">Ver detalle</button></div>' +
       '<div><div class="cifra">' + eur(tEste) + '</div><div class="delta ' + (dp > 0 ? 'up' : dp < 0 ? 'down' : '') + '">' + (dp == null ? 'Declarado este mes' : (dp > 0 ? '▲ ' : dp < 0 ? '▼ ' : '') + Math.abs(dp) + ' % frente a ' + MESES[pm.getMonth()] + ' a estas alturas') + '</div></div>' +
       '<div class="tres"><div><b>' + este.length + '</b><span>envíos</span></div><div><b>' + (enPlazo == null ? '—' : enPlazo + ' %') + '</b><span>en plazo</span></div><div><b>' + incs + '</b><span>incidencias</span></div></div>' +
@@ -603,7 +650,7 @@ VIEWS.hecho = function () {
   $('#vol').onclick = function () { S = { v: 'inicio' }; render(); };
 };
 
-$('#salir').onclick = function () { salir(); };
+$('#uchip').onclick = function () { abrirMenu(); };
 if (DEMO) { var b = document.createElement('div'); b.className = 'demo'; b.textContent = 'Versión de prueba: no se envía nada. Entra con cualquier usuario del tipo nombre.apellido.'; document.body.insertBefore(b, document.body.firstChild); }
 llamar('config').then(function (c) { Object.assign(CONF, c); }).catch(function () { }).then(render);
 })();
